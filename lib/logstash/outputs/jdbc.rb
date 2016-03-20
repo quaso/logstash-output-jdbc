@@ -5,6 +5,8 @@ require "stud/buffer"
 require "java"
 require "logstash-output-jdbc_jars"
 require "logstash-output-jdbc_ring-buffer"
+require 'openssl'
+require 'base64'
 
 class LogStash::Outputs::Jdbc < LogStash::Outputs::Base
   # Adds buffer support
@@ -76,6 +78,9 @@ class LogStash::Outputs::Jdbc < LogStash::Outputs::Base
 
   config :max_repeat_exceptions, :obsolete => "This has been replaced by max_flush_exceptions - which behaves slightly differently. Please check the documentation."
   config :max_repeat_exceptions_time, :obsolete => "This is no longer required"
+
+  config :private_key_file, :validate => :string, :required => false
+  config :private_key_password, :validate => :string, :required => false
 
   public
   def register
@@ -151,7 +156,16 @@ class LogStash::Outputs::Jdbc < LogStash::Outputs::Base
     @pool.setJdbcUrl(@connection_string)
 
     @pool.setUsername(@username) if @username
-    @pool.setPassword(@password) if @password
+
+    if @password
+      if @private_key_file and @private_key_password
+        private_key = OpenSSL::PKey::RSA.new(File.read(@private_key_file),@private_key_password)
+        string = private_key.private_decrypt(Base64.decode64(@password))
+        @pool.setPassword(string)
+      else
+        @pool.setPassword(@password)
+      end
+    end
 
     @pool.setMaximumPoolSize(@max_pool_size)
     @pool.setConnectionTimeout(@connection_timeout)
